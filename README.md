@@ -5,7 +5,7 @@
 
 ---
 
-[官网 / Official Site](https://ainx.org/hylo) | [GitHub](https://github.com/ainx-org/hylo-vscode)
+[官网 / Official Site](https://ainx.ink/hylo/) | [GitHub](https://github.com/fkueyu/hylo-vscode)
 
 无需离开 VS Code，即可在编写 HTML 文件时实现“源码”与“预览”的无缝双向联动：
 Write HTML inside VS Code with a fluid, bi-directional live sync preview:
@@ -56,4 +56,4 @@ Write HTML inside VS Code with a fluid, bi-directional live sync preview:
 ## 🐞 问题反馈 / Feedback
 
 如果您在使用过程中遇到任何 Bug 或有新的 feature 建议，请提交至我们的 GitHub Issues 页面，我们会第一时间进行跟进与优化：
-[👉 提交 Issue / Report a Bug](https://github.com/ainx-org/hylo-vscode/issues)
+[👉 提交 Issue / Report a Bug](https://github.com/fkueyu/hylo-vscode/issues)

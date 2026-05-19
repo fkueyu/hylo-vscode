@@ -8,12 +8,12 @@
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ainx-org/hylo-vscode.git"
+    "url": "https://github.com/fkueyu/hylo-vscode.git"
   },
   "bugs": {
-    "url": "https://github.com/ainx-org/hylo-vscode/issues"
+    "url": "https://github.com/fkueyu/hylo-vscode/issues"
   },
-  "homepage": "https://github.com/ainx-org/hylo-vscode#readme",
+  "homepage": "https://ainx.ink/hylo/",
   "engines": {
     "vscode": "^1.85.0"
   },
