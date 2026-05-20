@@ -23,8 +23,9 @@
       display: block;
       height: 100%;
       overflow: auto;
-      color: var(--vscode-editor-foreground, #000000);
-      background-color: var(--vscode-editor-background, #ffffff);
+      /* 阻断宿主 VS Code 暗色模式文本和背景继承，恢复浏览器默认的白底黑字阅读体验 */
+      color: #000000;
+      background-color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     .hylo-preview-highlight {

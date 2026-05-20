@@ -2,7 +2,7 @@
   "name": "hylo-html-preview",
   "displayName": "Hylo — HTML Live Preview",
   "description": "实时 HTML 预览与双向联动编辑器，HTML 的 Typora。",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "AINX",
   "license": "MIT",
   "icon": "icon.png",
