@@ -14,8 +14,8 @@ body {
   font-family: var(--font-family);
   font-size: 14px;
   line-height: 1.6;
-  color: var(--vscode-editor-foreground, #333333);
-  background-color: var(--vscode-editor-background, #ffffff);
+  color: #000000;
+  background-color: #ffffff;
   box-sizing: border-box;
   height: 100vh;
   overflow: hidden;
