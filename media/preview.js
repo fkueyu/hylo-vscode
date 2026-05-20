@@ -58,7 +58,7 @@
     "link", "meta", "param", "source", "track", "wbr",
   ]);
 
-  const TRANSPARENT_TAGS = new Set(["html", "head", "body"]);
+  const TRANSPARENT_TAGS = new Set(["html", "head"]);
 
   /**
    * 将 HyloNode 转换为原生 DOM 节点
