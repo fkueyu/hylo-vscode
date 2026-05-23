@@ -97,9 +97,28 @@ If GitHub Actions is unavailable, publish manually:
 ```bash
 npm run build
 npx vsce package -o extension.vsix
-npx vsce publish --packagePath extension.vsix -p "$VSCE_PAT"
-npx ovsx@0.10.12 publish extension.vsix -p "$OVSX_PAT"
 ```
+
+### 1. Publish to VS Code Marketplace
+* **First time (save token to Keychain)**:
+  ```bash
+  npx @vscode/vsce login AINX
+  ```
+* **Subsequent runs (one-click publish without token parameter)**:
+  ```bash
+  npx @vscode/vsce publish --packagePath extension.vsix
+  ```
+
+### 2. Publish to Open VSX Registry
+* **Option A: With temporary token parameter**:
+  ```bash
+  npx ovsx@0.10.12 publish extension.vsix -p "YOUR_OVSX_PAT"
+  ```
+* **Option B: With environment variable (recommended)**:
+  If you have configured `OVSX_PAT` in your shell profile (e.g. `export OVSX_PAT="your-token"` in `~/.zshrc`), you can publish directly:
+  ```bash
+  npx ovsx@0.10.12 publish extension.vsix
+  ```
 
 Do not reuse an already published version number. Increase `version` first.
 

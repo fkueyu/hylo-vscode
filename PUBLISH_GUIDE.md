@@ -23,7 +23,7 @@ npm run package
 打包产物：
 
 ```text
-hylo-html-preview-0.1.4.vsix
+extension.vsix
 ```
 
 `package.json` 已配置 `vscode:prepublish`，因此每次打包或从源码发布前都会自动执行构建。
@@ -44,25 +44,34 @@ npx ovsx create-namespace AINX -p <OPEN_VSX_TOKEN>
 
 如果 namespace 已存在，可以跳过此步。若要显示 verified publisher 标识，还需要按 Open VSX 的 namespace ownership 流程认领。
 
-## 4. 发布
+## 4. 本地发布
 
 推荐发布已打包的 VSIX：
 
-```bash
-npx ovsx publish hylo-html-preview-0.1.4.vsix -p <OPEN_VSX_TOKEN>
-```
+### 4.1 发布到 VS Code Marketplace (官方市场)
+* **首次登录** (在本地保存凭证至钥匙串)：
+  ```bash
+  npx @vscode/vsce login AINX
+  ```
+* **后续一键发布** (直接免 Token 发布)：
+  ```bash
+  npx @vscode/vsce publish --packagePath extension.vsix
+  ```
 
-也可以通过 npm script 从源码发布：
-
-```bash
-OVSX_PAT=<OPEN_VSX_TOKEN> npm run publish:openvsx
-```
+### 4.2 发布到 Open VSX Registry
+* **方式 A：使用临时 Token 发布**：
+  ```bash
+  npx ovsx publish extension.vsix -p <OPEN_VSX_TOKEN>
+  ```
+* **方式 B：使用系统环境变量自动发布** (推荐)：
+  如果您已在本地的 shell 配置（如 `~/.zshrc`）中添加了 `export OVSX_PAT="你的TOKEN"`，则可以直接运行免密发布：
+  ```bash
+  npx ovsx publish extension.vsix
+  ```
 
 发布成功后，插件地址应为：
-
-```text
-https://open-vsx.org/extension/AINX/hylo-html-preview
-```
+* 官方商店: `https://marketplace.visualstudio.com/items?itemName=AINX.hylo-html-preview`
+* Open VSX: `https://open-vsx.org/extension/AINX/hylo-html-preview`
 
 ## 5. 自动发布
 
