@@ -4,3 +4,7 @@ out
 *.vsix
 .DS_Store
 .vscode-test
+
+# IDEs and tool caches
+.vscode/
+.antigravitycli/
