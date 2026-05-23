@@ -5,3 +5,10 @@ node_modules/**
 tsconfig.json
 esbuild.js
 .gitignore
+
+# Tool caches and dev files
+.antigravitycli/**
+.github/**
+*.vsix
+PUBLISH_GUIDE.md
+RELEASE.md
