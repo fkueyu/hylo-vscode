@@ -18,7 +18,9 @@
 * 💻 **更强大的内置编辑器 (Built-in Monaco Editor)**：搭载与 VS Code 相同的 Monaco 编辑器内核，支持完整的代码自动补全、多光标编辑和各种快捷键。
 * 🖥️ **独立窗口，专注体验 (Standalone Interface)**：告别 VS Code 拥挤的侧边栏与多窗口干扰，提供专为 HTML 渲染和交互设计的无缝沉浸式工作区。
 * 📦 **一键发布与导出 (One-Click Export & Publish)**：原生客户端支持更丰富的文件管理与项目导出方案。
-* 📥 [**点击这里前往官网下载桌面版 App / Click here to download the Desktop App**](https://ainx.ink/hylo/)
+* 📥 [**Mac App Store 下载 / Download on the Mac App Store**](https://apps.apple.com/cn/app/hylo-editor/id6771771702?mt=12)
+* 📥 [**Windows 客户端下载 / Download Windows Client**](https://github.com/fkueyu/hylo/releases)
+* 🌐 [**前往官方网站 / Visit Official Website**](https://ainx.ink/hylo/)
 
 ---
 
