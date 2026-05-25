@@ -50,3 +50,6 @@ export type ExtToWebviewMessage =
  */
 export type WebviewToExtMessage =
   | { type: "click"; nodeId: string };
+
+declare module "html-to-docx";
+
