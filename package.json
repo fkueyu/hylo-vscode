@@ -2,7 +2,7 @@
   "name": "hylo-html-preview",
   "displayName": "Hylo — HTML Live Preview",
   "description": "实时 HTML 预览与双向联动编辑器，HTML 的 Typora。",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "AINX",
   "license": "MIT",
   "icon": "icon.png",
@@ -33,16 +33,16 @@
     "commands": [
       {
         "command": "hylo.openPreview",
-        "title": "Hylo: Open HTML Preview",
+        "title": "Hylo: 打开 HTML 实时预览 / Open HTML Preview",
         "icon": "$(open-preview)"
       },
       {
         "command": "hylo.exportToPDF",
-        "title": "Hylo: Export to PDF"
+        "title": "Hylo: 导出为 PDF / Export to PDF"
       },
       {
         "command": "hylo.exportToWord",
-        "title": "Hylo: Export to Word"
+        "title": "Hylo: 导出为 Word / Export to Word"
       }
     ],
     "menus": {
