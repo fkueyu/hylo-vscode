@@ -53,9 +53,26 @@ body {
   height: 100%;
 }
 
-/* Shadow DOM 外部样式隔离 */
+/* 渲染树根包装 */
 .ast-renderer {
   min-height: 100%;
+}
+
+.hylo-preview-highlight {
+  background: rgba(99, 102, 241, 0.12) !important;
+  outline: 2px solid rgba(99, 102, 241, 0.55) !important;
+  outline-offset: 1px;
+  border-radius: 4px;
+  transition: all 120ms ease;
+}
+[data-hylo-id]:hover {
+  cursor: pointer;
+  outline: 1px dashed rgba(99, 102, 241, 0.3);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.hylo-preview-highlight:hover {
+  outline: 2px solid rgba(99, 102, 241, 0.55) !important;
 }
 
 /* 空白提示 */

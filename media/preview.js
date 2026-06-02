@@ -13,44 +13,13 @@
 
   if (!rootContainer || !statsContainer || !emptyContainer) return;
 
-  // 初始化 Shadow DOM
-  const shadowRoot = rootContainer.shadowRoot || rootContainer.attachShadow({ mode: "open" });
+  // 追踪动态执行的内联脚本，在更新前进行清理，防止 DOM 树中历史脚本节点无限堆积
+  let activeInlineScripts = [];
 
-  // 注入 Shadow DOM 内部隔离样式
-  const shadowStyle = document.createElement("style");
-  shadowStyle.textContent = `
-    :host {
-      display: block;
-      height: 100%;
-      overflow: auto;
-      /* 阻断宿主 VS Code 暗色模式文本和背景继承，恢复浏览器默认的白底黑字阅读体验 */
-      color: #000000;
-      background-color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    .hylo-preview-highlight {
-      background: rgba(99, 102, 241, 0.15) !important;
-      outline: 2px solid rgba(99, 102, 241, 0.6) !important;
-      outline-offset: 1px;
-      border-radius: 4px;
-      transition: all 120ms ease;
-    }
-    [data-hylo-id]:hover {
-      cursor: pointer;
-      outline: 1px dashed rgba(99, 102, 241, 0.35);
-      outline-offset: 1px;
-      border-radius: 4px;
-    }
-    .hylo-preview-highlight:hover {
-      outline: 2px solid rgba(99, 102, 241, 0.6) !important;
-    }
-  `;
-  shadowRoot.appendChild(shadowStyle);
-
-  // 用来盛放渲染内容的容器
+  // 直接将渲染内容挂载到 rootContainer，不再使用 Shadow DOM，以确保 Tailwind CSS 样式能正确作用于预览内容
   const contentWrapper = document.createElement("div");
   contentWrapper.className = "ast-renderer";
-  shadowRoot.appendChild(contentWrapper);
+  rootContainer.appendChild(contentWrapper);
 
   // ── AST 渲染逻辑 ───────────────────────────────────────
 
@@ -87,7 +56,7 @@
     if (node.type === "element") {
       const tag = node.tagName.toLowerCase();
 
-      // 对 html、head、body 节点直接打平子节点，不产生冗余包裹
+      // 对 html、head 节点直接打平子节点，不产生冗余包裹
       if (TRANSPARENT_TAGS.has(tag)) {
         const fragment = document.createDocumentFragment();
         if (node.children) {
@@ -121,6 +90,39 @@
         }
       }
 
+      // script 标签特殊处理，支持实际执行
+      if (tag === "script") {
+        const src = node.attrs?.src;
+        if (src) {
+          // 外链脚本排重
+          if (!document.head.querySelector(`script[src="${src}"]`)) {
+            const script = document.createElement("script");
+            for (const [key, val] of Object.entries(node.attrs)) {
+              script.setAttribute(key, val);
+            }
+            document.head.appendChild(script);
+          }
+        } else {
+          // 内联脚本执行
+          const innerContent = node.children?.length === 1 && node.children[0].type === "text"
+            ? node.children[0].textContent || ""
+            : "";
+          if (innerContent) {
+            const script = document.createElement("script");
+            if (node.attrs) {
+              for (const [key, val] of Object.entries(node.attrs)) {
+                script.setAttribute(key, val);
+              }
+            }
+            // 使用 try { { ... } } 块级作用域包裹
+            script.textContent = `try {\n{\n${innerContent}\n}\n} catch (e) {\n  console.error("Hylo inline script error:", e);\n}`;
+            document.head.appendChild(script);
+            activeInlineScripts.push(script);
+          }
+        }
+        return document.createComment("script placeholder");
+      }
+
       return el;
     }
 
@@ -130,9 +132,8 @@
   // ── 事件监听与联动 ──────────────────────────────────────
 
   // 1. 点击预览元素，跳转源码 (Webview -> Extension)
-  shadowRoot.addEventListener("click", (e) => {
-    const path = e.composedPath();
-    const target = path[0];
+  rootContainer.addEventListener("click", (e) => {
+    const target = e.target;
     if (!target || typeof target.closest !== "function") return;
 
     const nodeEl = target.closest("[data-hylo-id]");
@@ -153,10 +154,14 @@
         // 隐藏空白提示
         emptyContainer.classList.add("hidden");
 
+        // 清理上一次渲染的内联脚本节点，防止 DOM 膨胀
+        activeInlineScripts.forEach(script => script.remove());
+        activeInlineScripts = [];
+
         // 渲染新 AST
         const fragment = createDOMNode(message.ast);
         
-        // 清理老内容（保留首个 style 标签）
+        // 清理老内容
         const children = Array.from(contentWrapper.childNodes);
         children.forEach(child => contentWrapper.removeChild(child));
 
@@ -174,11 +179,11 @@
         const nodeId = message.nodeId;
 
         // 移除原有的高亮样式
-        const prevHighlighted = shadowRoot.querySelectorAll(".hylo-preview-highlight");
+        const prevHighlighted = rootContainer.querySelectorAll(".hylo-preview-highlight");
         prevHighlighted.forEach((el) => el.classList.remove("hylo-preview-highlight"));
 
         if (nodeId) {
-          const targetEl = shadowRoot.querySelector(`[data-hylo-id="${nodeId}"]`);
+          const targetEl = rootContainer.querySelector(`[data-hylo-id="${nodeId}"]`);
           if (targetEl) {
             targetEl.classList.add("hylo-preview-highlight");
             // 平滑滚动到可视区域
