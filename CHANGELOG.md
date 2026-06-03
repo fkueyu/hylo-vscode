@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.11] - 2026-06-03
+## [0.1.12] - 2026-06-03
 
 ### Fixed
 - Fixed an issue where Tailwind CSS would not render correctly on the first preview load if the user's inline `tailwind.config` was placed after the Tailwind CDN script. Introduced a "script hoisting" mechanism to guarantee the configuration runs first.
