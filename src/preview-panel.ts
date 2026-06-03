@@ -62,15 +62,16 @@ export class HyloPreviewPanel {
     this.panel = panel;
     this.extensionUri = extensionUri;
 
-    // 设置 Webview HTML
-    this.panel.webview.html = this.getWebviewContent();
-
     // 监听 Webview 发来的消息（预览 → 源码）
+    // 注意：必须在设置 webview.html 之前注册监听器，防止 Webview 加载过快导致初始的 ready 信号丢失！
     this.panel.webview.onDidReceiveMessage(
       (msg: WebviewToExtMessage) => this.handleWebviewMessage(msg),
       null,
       this.disposables
     );
+
+    // 设置 Webview HTML
+    this.panel.webview.html = this.getWebviewContent();
 
     // 面板关闭时清理
     this.panel.onDidDispose(() => this.onDispose(), null, this.disposables);
@@ -114,13 +115,17 @@ export class HyloPreviewPanel {
       this.disposables
     );
 
-    // 开始跟踪
-    this.trackEditor(editor);
+    // 初始化时仅设置编辑器引用和标题，不发送数据。
+    // 首屏渲染完全依赖 Webview 侧发来的 ready 握手信号触发，
+    // 避免在 Tailwind CDN 尚未加载完毕时发送重复的 update 导致脚本时序错乱。
+    this.trackedEditor = editor;
+    this.panel.title = `Hylo: ${editor.document.fileName.split("/").pop() ?? "Preview"}`;
   }
 
   // ── 核心方法 ──────────────────────────────────────────
 
   private trackEditor(editor: vscode.TextEditor) {
+    console.log("[Hylo Ext] trackEditor called for:", editor.document.fileName);
     this.trackedEditor = editor;
     this.panel.title = `Hylo: ${editor.document.fileName.split("/").pop() ?? "Preview"}`;
     this.parseAndSend();
@@ -132,8 +137,12 @@ export class HyloPreviewPanel {
   }
 
   private parseAndSend() {
-    if (!this.trackedEditor) return;
+    if (!this.trackedEditor) {
+      console.log("[Hylo Ext] parseAndSend aborted: no trackedEditor");
+      return;
+    }
     const html = this.trackedEditor.document.getText();
+    console.log("[Hylo Ext] parseAndSend starting, HTML length:", html.length);
     const result = parseHTML(html);
 
     // 更新 NodeMap
@@ -147,9 +156,19 @@ export class HyloPreviewPanel {
     });
   }
 
-  /** 处理从 Webview 发来的消息 */
-  private handleWebviewMessage(msg: WebviewToExtMessage) {
+  private handleWebviewMessage(msg: any) {
+    console.log("[Hylo Ext] handleWebviewMessage received:", msg);
     switch (msg.type) {
+      case "ready": {
+        console.log("[Hylo Ext] Webview is ready, triggering first parse & send");
+        this.parseAndSend();
+        break;
+      }
+      case "requestUpdate": {
+        console.log("[Hylo Ext] Webview requested an update (for async rendering sync)");
+        this.parseAndSend();
+        break;
+      }
       case "click": {
         const loc = this.nodeMap.getLocation(msg.nodeId);
         if (!loc || !this.trackedEditor) return;
@@ -189,6 +208,7 @@ export class HyloPreviewPanel {
   }
 
   private postMessage(msg: ExtToWebviewMessage) {
+    console.log("[Hylo Ext] postMessage sending type:", msg.type);
     this.panel.webview.postMessage(msg);
   }
 
@@ -214,8 +234,9 @@ export class HyloPreviewPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval';">
+    content="default-src 'none'; img-src * data: blob:; style-src 'unsafe-inline' *; script-src 'unsafe-inline' 'unsafe-eval' https: http: vscode-resource: vscode-webview: vscode-webview-resource:; connect-src *; font-src * data:;">
   <link href="${mediaUri}/preview.css" rel="stylesheet">
+  <script nonce="${nonce}">window.tailwind = window.tailwind || {};</script>
   <title>Hylo Preview</title>
 </head>
 <body>

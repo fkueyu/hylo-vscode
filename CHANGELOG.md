@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.11] - 2026-06-03
+
+### Fixed
+- Fixed an issue where Tailwind CSS would not render correctly on the first preview load if the user's inline `tailwind.config` was placed after the Tailwind CDN script. Introduced a "script hoisting" mechanism to guarantee the configuration runs first.
+- Fixed a rendering issue where IntersectionObservers (like for scroll-based fade-in animations) would miscalculate on the initial load due to Tailwind generating CSS asynchronously. Added an automatic delayed secondary render pass to ensure styled layouts are calculated correctly.
+
+### 修复
+- 彻底修复了初次预览时，若用户在 HTML 中将 `tailwind.config` 定义在 Tailwind CDN 脚本之后，导致 Tailwind 主题和自定义颜色丢失的问题。引擎现在会自动“智能提权”，确保配置总是在 CDN 初始化前加载。
+- 彻底修复了因 Tailwind 异步编译 CSS，导致 DOM 布局错乱，进而引发首屏滚动淡入动画 (`IntersectionObserver`) 失效或必须“点一下”才能恢复的 Bug。现在系统会在脚本初始化后自动触发一次完美的带样式重绘，确保所有动画首屏秒出。
+
+
 ## [0.1.10] - 2026-06-02
 
 ### Fixed

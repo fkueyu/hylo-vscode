@@ -49,7 +49,8 @@ export type ExtToWebviewMessage =
  * Webview → Extension 消息类型
  */
 export type WebviewToExtMessage =
-  | { type: "click"; nodeId: string };
+  | { type: "click"; nodeId: string }
+  | { type: "ready" };
 
 declare module "html-to-docx";
 

@@ -8,7 +8,7 @@
   --highlight-border: rgba(99, 102, 241, 0.55);
 }
 
-body {
+body:not([data-hylo-id]) {
   margin: 0;
   padding: 16px;
   font-family: var(--font-family);
@@ -21,6 +21,15 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+body[data-hylo-id] {
+  display: block;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: auto;
+  min-height: 100%;
 }
 
 /* 状态统计面板 */
