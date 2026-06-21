@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.14] - 2026-06-21
+
+### Fixed
+- Optimized Webview preview rendering to prevent layout re-evaluation and flickering on every keystroke by updating the `<base>` tag only when the active file path actually changes.
+
+### 修复
+- 优化了 Webview 预览的渲染性能，只有在打开文件的物理路径变化时才更新 `<base>` 标签的 `href` 属性，避免了每次敲击键盘均触发布局重算和闪烁的问题。
+
+## [0.1.13] - 2026-06-21
+
+### Fixed
+- Fixed an issue where local relative image paths failed to load in the preview panel. Resolved by dynamically computing VS Code's Webview base URI of the file folder and relaxing Content Security Policy (CSP) rules for `vscode-webview-resource:` and `vscode-resource:` protocols.
+
+### 修复
+- 修复了预览面板中本地相对路径图片加载失败的问题。通过动态计算当前打开文件所在文件夹的 Webview URI 路径作为基础 URL，并放宽了 CSP（内容安全策略）以允许加载 `vscode-webview-resource:` 及 `vscode-resource:` 协议的图片。
+
 ## [0.1.12] - 2026-06-03
 
 ### Fixed
