@@ -189,7 +189,9 @@
             baseEl = document.createElement("base");
             document.head.insertBefore(baseEl, document.head.firstChild);
           }
-          baseEl.href = message.baseUri;
+          if (baseEl.getAttribute("href") !== message.baseUri) {
+            baseEl.href = message.baseUri;
+          }
         }
 
         // 隐藏空白提示
