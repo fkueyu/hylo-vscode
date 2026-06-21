@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.14] - 2026-06-21
+## [0.1.15] - 2026-06-21
 
 ### Fixed
 - Optimized Webview preview rendering to prevent layout re-evaluation and flickering on every keystroke by updating the `<base>` tag only when the active file path actually changes.
