@@ -40,7 +40,11 @@ export class HyloPreviewPanel {
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
-        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
+        localResourceRoots: [
+          vscode.Uri.joinPath(extensionUri, "media"),
+          ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
+          ...(editor.document.uri.scheme === 'file' ? [vscode.Uri.file(require("path").dirname(editor.document.uri.fsPath))] : [])
+        ],
         retainContextWhenHidden: true,
       }
     );
@@ -148,11 +152,19 @@ export class HyloPreviewPanel {
     // 更新 NodeMap
     this.nodeMap.update(result.nodeMap);
 
+    let baseUri = undefined;
+    if (this.trackedEditor.document.uri.scheme === "file") {
+      const dirPath = require("path").dirname(this.trackedEditor.document.uri.fsPath);
+      const dirUri = vscode.Uri.file(dirPath);
+      baseUri = this.panel.webview.asWebviewUri(dirUri).toString() + "/";
+    }
+
     // 发送 AST 到 Webview
     this.postMessage({
       type: "update",
       ast: result.root,
       stats: { nodeCount: result.nodeCount, parseTime: result.parseTime },
+      baseUri,
     });
   }
 
@@ -234,7 +246,7 @@ export class HyloPreviewPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; img-src * data: blob:; style-src 'unsafe-inline' *; script-src 'unsafe-inline' 'unsafe-eval' https: http: vscode-resource: vscode-webview: vscode-webview-resource:; connect-src *; font-src * data:;">
+    content="default-src 'none'; img-src * data: blob: vscode-webview-resource: vscode-resource:; style-src 'unsafe-inline' *; script-src 'unsafe-inline' 'unsafe-eval' https: http: vscode-resource: vscode-webview: vscode-webview-resource:; connect-src *; font-src * data:;">
   <link href="${mediaUri}/preview.css" rel="stylesheet">
   <script nonce="${nonce}">window.tailwind = window.tailwind || {};</script>
   <title>Hylo Preview</title>

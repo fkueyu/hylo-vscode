@@ -183,6 +183,15 @@
 
     switch (message.type) {
       case "update": {
+        if (message.baseUri) {
+          let baseEl = document.head.querySelector("base");
+          if (!baseEl) {
+            baseEl = document.createElement("base");
+            document.head.insertBefore(baseEl, document.head.firstChild);
+          }
+          baseEl.href = message.baseUri;
+        }
+
         // 隐藏空白提示
         emptyContainer.classList.add("hidden");
 
