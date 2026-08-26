@@ -2,7 +2,7 @@
   "name": "hylo-html-preview",
   "displayName": "Hylo — HTML Live Preview",
   "description": "实时 HTML 预览与双向联动编辑器，HTML 的 Typora。",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "publisher": "AINX",
   "license": "MIT",
   "icon": "icon.png",
@@ -17,6 +17,14 @@
   "engines": {
     "vscode": "^1.85.0"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "restrictedConfigurations": [
+        "hylo.previewMode"
+      ]
+    }
+  },
   "categories": [
     "Other",
     "Visualization"
@@ -30,6 +38,25 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Hylo",
+      "properties": {
+        "hylo.previewMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "interactive"
+          ],
+          "enumDescriptions": [
+            "Blocks document scripts and remote resources.",
+            "Runs document scripts inside a sandboxed preview frame in trusted workspaces."
+          ],
+          "default": "safe",
+          "scope": "resource",
+          "description": "Controls whether Hylo executes document scripts in the isolated preview frame."
+        }
+      }
+    },
     "commands": [
       {
         "command": "hylo.openPreview",
@@ -68,8 +95,11 @@
     }
   },
   "scripts": {
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test test/**/*.test.js test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js",
+    "bench:core": "node vendor/hylo-core/bench/parse.mjs",
     "watch": "node esbuild.js --watch",
     "package": "vsce package",
     "publish:marketplace": "vsce publish",
@@ -83,8 +113,8 @@
     "typescript": "^5.8.0"
   },
   "dependencies": {
+    "@ainx/hylo-core": "file:vendor/hylo-core",
     "html-to-docx": "^1.8.0",
-    "nanoid": "^5.1.11",
     "parse5": "^8.0.1"
   }
 }

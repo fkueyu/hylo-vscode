@@ -28,15 +28,21 @@
 
 ### 🇨🇳 中文介绍
 * **双向联动同步**：在左侧代码区移动光标或选中标签，右侧预览自动高亮对应元素并平滑滚动定位；在右侧预览区点击任意元素，左侧编辑器光标瞬间精准跳转到对应的代码行。
+* **文档结构导航**：预览顶部显示当前元素层级，可展开文档结构抽屉并从任意节点同时定位源码与预览。
 * **高精度 AST 解析**：基于高精度 parse5 解析引擎，维护精准的节点源码映射位置（Source Locations），完美兼容复杂、嵌套甚至不规范的 HTML。
-* **独立的沙盒隔离**：基于 Shadow DOM 将预览样式与 VS Code 完全隔离，确保您的自定义样式绝不污染编辑器本身。
+* **大文档后台解析**：超过 512 KB 的文档自动交给版本化 Worker 解析，避免阻塞扩展主线程并丢弃过期结果。
+* **安全预览与沙盒 iframe**：默认阻止文档脚本与远程资源，用户页面运行在无同源权限的沙盒 iframe 中，自定义样式不会覆盖插件工具栏。
+* **工作区信任保护**：只有受信任的 Workspace 才能主动开启交互预览，并在隔离 iframe 内加载 HTTPS 脚本与 CDN。
 * **零配置，即开即用**：无需配置任何端口、本地服务器，开箱即用。
 * **Tailwind & CDN 支持**：完美支持在 `<head>` 中引入 Tailwind CSS 等前端框架 CDN，支持毫秒级页面热更新。
 
 ### 🇬🇧 English Description
 * **Bi-directional Syncing**: Moving the code cursor or selecting a tag highlights the corresponding element in the preview and scrolls it into view. Clicking any element in the preview instantly jumps the editor cursor to the exact line of code.
+* **Document Structure Navigation**: The preview shows the current element path and provides an optional outline drawer for locating both source and rendered nodes.
 * **High-Precision AST Mapping**: Powered by the robust `parse5` HTML parser, maintaining accurate Source Maps (Locations) of DOM nodes, even for complex, nested, or malformed HTML structures.
-* **Shadow DOM Sandboxing**: Uses Shadow DOM to strictly isolate the preview styles from VS Code's editor styles, ensuring your custom CSS never pollutes the editor's UI.
+* **Background parsing for large documents**: Documents above 512 KB move to a versioned Worker so stale results cannot replace newer edits.
+* **Safe Preview in a sandbox iframe**: Document scripts and remote resources are blocked by default, while user styles remain isolated from the extension toolbar.
+* **Workspace Trust protection**: Interactive Preview can be enabled only in trusted workspaces and runs HTTPS scripts inside the isolated frame.
 * **Zero Configuration**: Ready to use out of the box. No local server, ports, or setup required.
 * **Tailwind CSS & CDNs**: Seamlessly loads framework scripts (like Tailwind CSS) imported in the `<head>` tag, providing instant rendering updates.
 
@@ -59,15 +65,15 @@
 ## 💡 常见问题与提示 / FAQ & Tips
 
 #### Q: 为什么预览区没有加载我的 CSS 样式？/ Why is my custom CSS not rendering?
-* **中文**：为了保障编辑器的安全，预览区是沙盒隔离的。请确保您的 HTML 中有 `<style>` 标签或 `<link rel="stylesheet">` 样式表引入。本插件支持本地相对路径和网络 CDN 地址。
-* **English**: To prevent style bleeding into the editor, the preview runs in a sandboxed Shadow DOM. Make sure your HTML includes inline `<style>` tags or `<link rel="stylesheet">` files. Both relative paths and remote CDNs are fully supported.
+* **中文**：安全预览支持内联 `<style>` 与本地相对资源，但会阻止网络 CDN。若工作区可信，可点击顶部“交互预览”后加载 HTTPS 样式与脚本。
+* **English**: Safe Preview supports inline styles and local relative resources while blocking network CDNs. In a trusted workspace, switch to Interactive Preview to load HTTPS styles and scripts.
 
 #### Q: 插件如何加载 Tailwind CSS？/ How to load Tailwind CSS?
-* **中文**：直接在 HTML 的 `<head>` 中像下面这样引入 Tailwind 官方 CDN 即可：
+* **中文**：先确认工作区受信任并开启“交互预览”，再在 HTML 的 `<head>` 中引入 HTTPS Tailwind CDN：
   ```html
   <script src="https://cdn.tailwindcss.com"></script>
   ```
-* **English**: Simply include the official Tailwind CDN script inside your HTML's `<head>` tag:
+* **English**: Trust the workspace, enable Interactive Preview, then include the HTTPS Tailwind CDN script in `<head>`:
   ```html
   <script src="https://cdn.tailwindcss.com"></script>
   ```

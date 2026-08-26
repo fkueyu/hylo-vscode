@@ -9,6 +9,9 @@ esbuild.js
 # Tool caches and dev files
 .antigravitycli/**
 .github/**
+test/**
+vendor/**
+dist/*.map
 *.vsix
 PUBLISH_GUIDE.md
 RELEASE.md

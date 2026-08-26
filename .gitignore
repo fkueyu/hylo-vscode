@@ -1,5 +1,7 @@
 node_modules
 dist
+!vendor/hylo-core/dist/
+!vendor/hylo-core/dist/**
 out
 *.vsix
 .DS_Store

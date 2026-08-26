@@ -1,283 +1,265 @@
-// ============================================================
-// Hylo VS Code Extension — Webview 脚本
-// ============================================================
-
+// Hylo VS Code trusted Webview shell.
+// User HTML is rendered only inside #hylo-preview-frame.
 (function () {
-  // 获取 VS Code API 实例
   // @ts-ignore
   const vscode = acquireVsCodeApi();
-
-  const rootContainer = document.getElementById("hylo-root");
+  const frame = document.getElementById("hylo-preview-frame");
   const statsContainer = document.getElementById("hylo-stats");
   const emptyContainer = document.getElementById("hylo-empty");
+  const workspace = document.getElementById("hylo-workspace");
+  const outlinePanel = document.getElementById("hylo-outline");
+  const outlineTree = document.getElementById("hylo-outline-tree");
+  const outlineCount = document.getElementById("hylo-outline-count");
+  const outlineToggle = document.getElementById("hylo-outline-toggle");
+  const modeToggle = document.getElementById("hylo-mode-toggle");
+  const modeHint = document.getElementById("hylo-mode-hint");
+  const breadcrumb = document.getElementById("hylo-breadcrumb");
+  const structure = globalThis.HyloStructure;
 
-  if (!rootContainer || !statsContainer || !emptyContainer) return;
+  if (
+    !(frame instanceof HTMLIFrameElement) || !statsContainer || !emptyContainer ||
+    !workspace || !outlinePanel || !outlineTree || !outlineCount || !outlineToggle ||
+    !modeToggle || !modeHint || !breadcrumb || !structure
+  ) return;
 
-  // 追踪动态执行的内联脚本，在更新前进行清理，防止 DOM 树中历史脚本节点无限堆积
-  let activeInlineScripts = [];
-  // 暂存当前解析出的 script 节点，待 DOM 树挂载完成后统一在 document.head 中按顺序执行
-  let pendingScripts = [];
+  const CHANNEL = "hylo-preview";
+  const sessionToken = frame.dataset.session || "";
+  const safeFrameSrc = frame.dataset.safeSrc || "";
+  const interactiveFrameSrc = frame.dataset.interactiveSrc || "";
+  let outlineOpen = Boolean((vscode.getState() || {}).outlineOpen);
+  let currentAst = null;
+  let selectedNodeId = null;
+  let currentMode = "safe";
+  let workspaceTrusted = false;
+  let frameReady = false;
+  let lastUpdate = null;
+  const collapsedNodeIds = new Set();
 
-  function processNextScript() {
-    if (pendingScripts.length === 0) {
-      // 【终极渲染修复】：
-      // 针对 Tailwind CDN 异步生成 CSS 的特性，第一次渲染时由于 CSS 还在生成中，
-      // DOM 元素的尺寸和布局都是错乱的，这会导致用户代码中的 IntersectionObserver 计算错误（比如 fade-in 无法触发）。
-      // 当我们在首次加载完成并执行完所有脚本后，延迟 300ms（等待 Tailwind 生成 CSS），
-      // 然后向插件发送 `requestUpdate` 强制触发一次完全基于带样式 DOM 的二次渲染，
-      // 从而完美还原“点击一下屏幕就修好”的行为。
-      if (!window.__hyloFirstRenderDone) {
-        window.__hyloFirstRenderDone = true;
-        setTimeout(() => {
-          // @ts-ignore
-          if (typeof vscode !== "undefined") {
-            vscode.postMessage({ type: "requestUpdate" });
-          }
-        }, 300);
+  function rebuildFrame() {
+    frameReady = false;
+    frame.src = currentMode === "interactive" ? interactiveFrameSrc : safeFrameSrc;
+  }
+
+  function postToFrame(message) {
+    if (!frameReady || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ channel: CHANNEL, ...message }, "*");
+  }
+
+  function sendLastUpdate() {
+    if (!lastUpdate) return;
+    postToFrame({
+      type: "render",
+      ast: lastUpdate.ast,
+      stats: lastUpdate.stats,
+      baseUri: lastUpdate.baseUri,
+      mode: currentMode,
+      highlightedNodeId: selectedNodeId,
+    });
+  }
+
+  function updateModeUi() {
+    const interactive = currentMode === "interactive";
+    modeToggle.textContent = interactive
+      ? modeToggle.dataset.interactiveLabel || "Interactive Preview"
+      : modeToggle.dataset.safeLabel || "Safe Preview";
+    modeToggle.classList.toggle("is-interactive", interactive);
+    modeToggle.setAttribute("aria-pressed", String(interactive));
+    modeToggle.disabled = !workspaceTrusted;
+    modeHint.textContent = interactive ? "" : modeHint.dataset.safeHint || "";
+  }
+
+  function applyMode(mode, trusted) {
+    workspaceTrusted = Boolean(trusted);
+    const resolved = mode === "interactive" && workspaceTrusted ? "interactive" : "safe";
+    const changed = resolved !== currentMode;
+    currentMode = resolved;
+    updateModeUi();
+    if (changed) rebuildFrame();
+  }
+
+  function updateOutlineVisibility() {
+    workspace.classList.toggle("hylo-outline-open", outlineOpen);
+    outlineToggle.classList.toggle("is-active", outlineOpen);
+    outlineToggle.setAttribute("aria-expanded", String(outlineOpen));
+    const label = outlineOpen ? outlineToggle.dataset.hideLabel : outlineToggle.dataset.showLabel;
+    if (label) {
+      outlineToggle.title = label;
+      outlineToggle.setAttribute("aria-label", label);
+    }
+  }
+
+  function renderBreadcrumb() {
+    breadcrumb.replaceChildren();
+    const trail = currentAst && selectedNodeId
+      ? structure.findNodeTrail(currentAst, selectedNodeId)
+      : [];
+    if (trail.length === 0) {
+      const hint = document.createElement("span");
+      hint.className = "hylo-breadcrumb__hint";
+      hint.textContent = breadcrumb.dataset.emptyLabel || "";
+      breadcrumb.appendChild(hint);
+      return;
+    }
+    trail.forEach((item, index) => {
+      if (index > 0) {
+        const separator = document.createElement("span");
+        separator.className = "hylo-breadcrumb__separator";
+        separator.textContent = "/";
+        breadcrumb.appendChild(separator);
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${item.tagName}${item.detail}`;
+      button.addEventListener("click", () => selectNode(item.nodeId, true, true));
+      breadcrumb.appendChild(button);
+    });
+  }
+
+  function syncSelectedOutlineNode() {
+    outlineTree.querySelectorAll(".hylo-outline-node.is-selected").forEach((node) => {
+      node.classList.remove("is-selected");
+    });
+    if (!selectedNodeId) return;
+    const row = outlineTree.querySelector(`[data-outline-node-id="${CSS.escape(selectedNodeId)}"]`);
+    row?.classList.add("is-selected");
+    row?.scrollIntoView({ block: "nearest" });
+  }
+
+  function selectNode(nodeId, notifyExtension, scrollPreview) {
+    selectedNodeId = typeof nodeId === "string" ? nodeId : null;
+    renderBreadcrumb();
+    syncSelectedOutlineNode();
+    postToFrame({ type: "highlight", nodeId: selectedNodeId, scroll: scrollPreview !== false });
+    if (notifyExtension && selectedNodeId) {
+      vscode.postMessage({ type: "click", nodeId: selectedNodeId, sessionToken });
+    }
+  }
+
+  function createOutlineBranch(item, depth) {
+    const branch = document.createElement("div");
+    const row = document.createElement("div");
+    row.className = "hylo-outline-node";
+    row.dataset.outlineNodeId = item.nodeId;
+    row.style.setProperty("--hylo-outline-depth", String(depth));
+    const hasChildren = item.children.length > 0;
+    const children = document.createElement("div");
+
+    if (hasChildren) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "hylo-outline-node__toggle";
+      toggle.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2 4 4-4 4" /></svg>';
+      toggle.setAttribute("aria-expanded", String(!collapsedNodeIds.has(item.nodeId)));
+      toggle.addEventListener("click", () => {
+        if (collapsedNodeIds.has(item.nodeId)) collapsedNodeIds.delete(item.nodeId);
+        else collapsedNodeIds.add(item.nodeId);
+        const collapsed = collapsedNodeIds.has(item.nodeId);
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        children.hidden = collapsed;
+      });
+      row.appendChild(toggle);
+    } else {
+      const spacer = document.createElement("span");
+      spacer.className = "hylo-outline-node__spacer";
+      row.appendChild(spacer);
+    }
+
+    const target = document.createElement("button");
+    target.type = "button";
+    target.className = "hylo-outline-node__target";
+    target.title = `${item.tagName}${item.detail}`;
+    const tag = document.createElement("span");
+    tag.textContent = item.tagName;
+    target.appendChild(tag);
+    if (item.detail) {
+      const detail = document.createElement("small");
+      detail.textContent = item.detail;
+      target.appendChild(detail);
+    }
+    target.addEventListener("click", () => selectNode(item.nodeId, true, true));
+    row.appendChild(target);
+    branch.appendChild(row);
+
+    if (hasChildren) {
+      children.hidden = collapsedNodeIds.has(item.nodeId);
+      item.children.forEach((child) => children.appendChild(createOutlineBranch(child, depth + 1)));
+      branch.appendChild(children);
+    }
+    return branch;
+  }
+
+  function renderOutline(ast) {
+    const items = structure.buildDocumentOutline(ast);
+    outlineTree.replaceChildren();
+    outlineCount.textContent = String(structure.countOutlineItems(items));
+    if (items.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "hylo-outline__empty";
+      empty.textContent = outlinePanel.dataset.emptyLabel || "";
+      outlineTree.appendChild(empty);
+      return;
+    }
+    items.forEach((item) => outlineTree.appendChild(createOutlineBranch(item, 0)));
+    syncSelectedOutlineNode();
+  }
+
+  outlineToggle.addEventListener("click", () => {
+    outlineOpen = !outlineOpen;
+    vscode.setState({ outlineOpen });
+    updateOutlineVisibility();
+  });
+
+  modeToggle.addEventListener("click", () => {
+    const requested = currentMode === "safe" ? "interactive" : "safe";
+    vscode.postMessage({ type: "setPreviewMode", mode: requested, sessionToken });
+  });
+
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== window && event.source !== null) {
+      if (event.source !== frame.contentWindow || message?.channel !== CHANNEL) return;
+      if (message.type === "preview-ready") {
+        frameReady = true;
+        sendLastUpdate();
+      } else if (message.type === "node-selected" && typeof message.nodeId === "string") {
+        selectNode(message.nodeId, true, false);
       }
       return;
     }
-    const scriptNode = pendingScripts.shift();
-    const src = scriptNode.attrs?.src;
 
-    if (src) {
-      // 外链脚本
-      if (!document.head.querySelector(`script[src="${src}"]`)) {
-        const script = document.createElement("script");
-        for (const [key, val] of Object.entries(scriptNode.attrs || {})) {
-          script.setAttribute(key, val);
-        }
-        script.onload = () => { processNextScript(); };
-        script.onerror = () => { processNextScript(); };
-        document.head.appendChild(script);
-      } else {
-        // 已加载，直接执行下一个
-        processNextScript();
+    if (!message || typeof message.type !== "string" || message.sessionToken !== sessionToken) return;
+    if (message.type === "update") {
+      lastUpdate = message;
+      currentAst = message.ast;
+      applyMode(message.mode, message.workspaceTrusted);
+      if (selectedNodeId && structure.findNodeTrail(currentAst, selectedNodeId).length === 0) {
+        selectedNodeId = null;
       }
-    } else {
-      // 内联脚本
-      const innerContent = scriptNode.children?.length === 1 && scriptNode.children[0].type === "text"
-        ? scriptNode.children[0].textContent || ""
-        : "";
-      if (innerContent) {
-        const script = document.createElement("script");
-        if (scriptNode.attrs) {
-          for (const [key, val] of Object.entries(scriptNode.attrs)) {
-            script.setAttribute(key, val);
-          }
-        }
-        // 使用 try-catch 保护内联脚本执行
-        script.textContent = `try {\n{\n${innerContent}\n}\n} catch (e) {\n  console.error("Hylo inline script error:", e);\n}`;
-        document.head.appendChild(script);
-        activeInlineScripts.push(script);
-      }
-      processNextScript();
-    }
-  }
-
-  // 直接将渲染内容挂载到 rootContainer，不再使用 Shadow DOM，以确保 Tailwind CSS 样式能正确作用于预览内容
-  const contentWrapper = document.createElement("div");
-  contentWrapper.className = "ast-renderer";
-  rootContainer.appendChild(contentWrapper);
-
-  // ── AST 渲染逻辑 ───────────────────────────────────────
-
-  const VOID_ELEMENTS = new Set([
-    "area", "base", "br", "col", "embed", "hr", "img", "input",
-    "link", "meta", "param", "source", "track", "wbr",
-  ]);
-
-  const TRANSPARENT_TAGS = new Set(["html", "head"]);
-
-  /**
-   * 将 HyloNode 转换为原生 DOM 节点
-   */
-  function createDOMNode(node) {
-    if (node.type === "text") {
-      return document.createTextNode(node.textContent || "");
-    }
-
-    if (node.type === "comment" || node.type === "doctype") {
-      return null;
-    }
-
-    if (node.type === "document") {
-      const fragment = document.createDocumentFragment();
-      if (node.children) {
-        for (const child of node.children) {
-          const childDom = createDOMNode(child);
-          if (childDom) fragment.appendChild(childDom);
-        }
-      }
-      return fragment;
-    }
-
-    if (node.type === "element") {
-      const tag = node.tagName.toLowerCase();
-
-      // 对 html、head 节点直接打平子节点，不产生冗余包裹
-      if (TRANSPARENT_TAGS.has(tag)) {
-        const fragment = document.createDocumentFragment();
-        if (node.children) {
-          for (const child of node.children) {
-            const childDom = createDOMNode(child);
-            if (childDom) fragment.appendChild(childDom);
-          }
-        }
-        return fragment;
-      }
-
-      // 创建元素节点
-      const el = document.createElement(tag);
-      el.setAttribute("data-hylo-id", node.nodeId);
-
-      // 设置属性
-      if (node.attrs) {
-        for (const [key, val] of Object.entries(node.attrs)) {
-          // 排除内联事件监听，防止 XSS
-          if (!key.startsWith("on")) {
-            el.setAttribute(key, val);
-          }
-        }
-      }
-
-      // 递归处理子节点
-      if (!VOID_ELEMENTS.has(tag) && tag !== "script" && node.children) {
-        for (const child of node.children) {
-          const childDom = createDOMNode(child);
-          if (childDom) el.appendChild(childDom);
-        }
-      }
-
-      // script 标签加入暂存列表，等待 DOM 挂载完毕后执行
-      if (tag === "script") {
-        pendingScripts.push(node);
-        return document.createComment("script placeholder");
-      }
-
-      return el;
-    }
-
-    return null;
-  }
-
-  // ── 事件监听与联动 ──────────────────────────────────────
-
-  // 1. 点击预览元素，跳转源码 (Webview -> Extension)
-  rootContainer.addEventListener("click", (e) => {
-    const target = e.target;
-    if (!target || typeof target.closest !== "function") return;
-
-    const nodeEl = target.closest("[data-hylo-id]");
-    if (nodeEl) {
-      const nodeId = nodeEl.getAttribute("data-hylo-id");
-      if (nodeId) {
-        vscode.postMessage({ type: "click", nodeId });
-      }
+      emptyContainer.classList.add("hidden");
+      renderOutline(currentAst);
+      renderBreadcrumb();
+      const label = statsContainer.dataset.nodeLabel || "nodes";
+      statsContainer.textContent = `${message.stats.nodeCount} ${label} · ${message.stats.parseTime.toFixed(1)} ms`;
+      if (currentMode === "interactive" && frameReady) rebuildFrame();
+      else sendLastUpdate();
+    } else if (message.type === "highlight") {
+      selectNode(message.nodeId, false, true);
+    } else if (message.type === "previewMode") {
+      applyMode(message.mode, message.workspaceTrusted);
+    } else if (message.type === "parsing") {
+      lastUpdate = null;
+      currentAst = null;
+      selectedNodeId = null;
+      outlineTree.replaceChildren();
+      outlineCount.textContent = "0";
+      renderBreadcrumb();
+      statsContainer.textContent = statsContainer.dataset.parsingLabel || "Parsing…";
+      rebuildFrame();
     }
   });
 
-  // 2. 接收来自 Extension 的消息 (Extension -> Webview)
-  window.addEventListener("message", (event) => {
-    const message = event.data;
-
-    switch (message.type) {
-      case "update": {
-        if (message.baseUri) {
-          let baseEl = document.head.querySelector("base");
-          if (!baseEl) {
-            baseEl = document.createElement("base");
-            document.head.insertBefore(baseEl, document.head.firstChild);
-          }
-          if (baseEl.getAttribute("href") !== message.baseUri) {
-            baseEl.href = message.baseUri;
-          }
-        }
-
-        // 隐藏空白提示
-        emptyContainer.classList.add("hidden");
-
-        // 清理上一次渲染的内联脚本节点，防止 DOM 膨胀
-        activeInlineScripts.forEach(script => script.remove());
-        activeInlineScripts = [];
-        pendingScripts = [];
-
-        // 渲染新 AST 并暂存其中的脚本
-        const fragment = createDOMNode(message.ast);
-
-        // 【核心修复】：智能提权 Tailwind 配置脚本
-        // 在实际开发中，开发者有时会将 tailwind.config 脚本放在 CDN 脚本之后。
-        // 原生浏览器遇到 CDN 脚本时会阻塞解析，此时 DOM 还未完全 Ready，所以 Tailwind 会等待；
-        // 但在我们的 Webview 中，AST 是一次性注入的（document.readyState 已经是 complete）。
-        // Tailwind CDN 一旦执行就会**立刻同步**读取配置。如果配置脚本排在后面，就会读取为空。
-        // 因此我们必须把所有包含 tailwind.config 的内联脚本“提权”到最前面执行！
-        const hoisted = [];
-        const others = [];
-        for (const node of pendingScripts) {
-          if (!node.attrs?.src) {
-            const innerContent = node.children?.length === 1 && node.children[0].type === "text"
-              ? node.children[0].textContent || ""
-              : "";
-            if (innerContent.includes("tailwind.config")) {
-              hoisted.push(node);
-              continue;
-            }
-          }
-          others.push(node);
-        }
-        pendingScripts = [...hoisted, ...others];
-        
-        // 清理老内容
-        const children = Array.from(contentWrapper.childNodes);
-        children.forEach(child => contentWrapper.removeChild(child));
-
-        if (fragment) {
-          contentWrapper.appendChild(fragment);
-        }
-
-        // 此时所有 DOM 元素均已正式挂载到文档中，开始按严格的顺序（队列）执行脚本
-        // 这样可以确保内联的 tailwind.config = ... 在 CDN 脚本加载前立刻执行
-        processNextScript();
-
-        // 诊断日志 (自动输出在 Webview 控制台)
-        console.log("=== Hylo VS Code Preview Update Diagnostic ===");
-        console.log("1. Tailwind 脚本是否存在于 Head:", !!document.head.querySelector('script[src*="tailwindcss"]'));
-        console.log("2. window.tailwind 对象状态:", window.tailwind);
-        console.log("3. 页面已生成样式表数量:", document.querySelectorAll('style').length);
-        console.log("4. 预览容器 DOM 节点前 300 字符:", contentWrapper.innerHTML.slice(0, 300));
-        console.log("5. fade-in 元素总数:", document.querySelectorAll('.fade-in').length);
-        console.log("6. 已激活的 fade-in 元素数:", document.querySelectorAll('.fade-in.active').length);
-
-        // 显示解析统计
-        const stats = message.stats;
-        statsContainer.innerText = `Nodes: ${stats.nodeCount} | Parse: ${stats.parseTime.toFixed(1)}ms`;
-        break;
-      }
-
-      case "highlight": {
-        const nodeId = message.nodeId;
-
-        // 移除原有的高亮样式
-        const prevHighlighted = rootContainer.querySelectorAll(".hylo-preview-highlight");
-        prevHighlighted.forEach((el) => el.classList.remove("hylo-preview-highlight"));
-
-        if (nodeId) {
-          const targetEl = rootContainer.querySelector(`[data-hylo-id="${nodeId}"]`);
-          if (targetEl) {
-            targetEl.classList.add("hylo-preview-highlight");
-            // 平滑滚动到可视区域
-            targetEl.scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-              inline: "nearest",
-            });
-          }
-        }
-        break;
-      }
-    }
-  });
-
-  // 发送 ready 握手信号给插件，表示 Webview 监听已就绪，请求发送初始内容
-  vscode.postMessage({ type: "ready" });
+  updateOutlineVisibility();
+  updateModeUi();
+  rebuildFrame();
+  vscode.postMessage({ type: "ready", sessionToken });
 })();

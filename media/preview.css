@@ -1,115 +1,453 @@
 /* ============================================================
- * Hylo VS Code Extension — Webview 样式
+ * Hylo VS Code — Structure Mapping Preview
+ * VS Code 原生外壳 + Hylo 选择语义
  * ============================================================ */
 
 :root {
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --highlight-bg: rgba(99, 102, 241, 0.12);
-  --highlight-border: rgba(99, 102, 241, 0.55);
+  --hylo-violet: #756ff2;
+  --hylo-violet-soft: rgba(117, 111, 242, 0.16);
+  --hylo-cyan: #22c7b8;
+  --hylo-cyan-soft: rgba(34, 199, 184, 0.14);
+  --hylo-toolbar-height: 36px;
+  --hylo-outline-width: 224px;
+  --hylo-radius: 5px;
+  --hylo-ui-font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --hylo-mono-font: var(--vscode-editor-font-family, "SF Mono", Monaco, Consolas, monospace);
 }
 
-body:not([data-hylo-id]) {
-  margin: 0;
-  padding: 16px;
-  font-family: var(--font-family);
-  font-size: 14px;
-  line-height: 1.6;
-  color: #000000;
-  background-color: #ffffff;
-  box-sizing: border-box;
-  height: 100vh;
-  overflow: hidden;
+body.hylo-host-shell {
   display: flex;
-  flex-direction: column;
-}
-
-body[data-hylo-id] {
-  display: block;
+  width: 100%;
+  height: 100vh;
   margin: 0;
   padding: 0;
-  width: 100%;
-  height: auto;
-  min-height: 100%;
-}
-
-/* 状态统计面板 */
-#hylo-stats {
-  position: fixed;
-  bottom: 8px;
-  right: 8px;
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background-color: var(--vscode-editorHoverWidget-background, rgba(0, 0, 0, 0.7));
-  color: var(--vscode-editorHoverWidget-foreground, #ffffff);
-  border: 1px solid var(--vscode-editorHoverWidget-border, rgba(255, 255, 255, 0.1));
-  z-index: 9999;
-  pointer-events: none;
-  font-family: "SF Mono", Monaco, Consolas, monospace;
-  opacity: 0.85;
-  backdrop-filter: blur(4px);
-  transition: opacity 0.2s;
-}
-
-#hylo-stats.hidden {
-  opacity: 0;
-}
-
-/* 渲染树容器 */
-#hylo-root {
-  flex: 1;
-  overflow: auto;
-  height: 100%;
-}
-
-/* 渲染树根包装 */
-.ast-renderer {
-  min-height: 100%;
-}
-
-.hylo-preview-highlight {
-  background: rgba(99, 102, 241, 0.12) !important;
-  outline: 2px solid rgba(99, 102, 241, 0.55) !important;
-  outline-offset: 1px;
-  border-radius: 4px;
-  transition: all 120ms ease;
-}
-[data-hylo-id]:hover {
-  cursor: pointer;
-  outline: 1px dashed rgba(99, 102, 241, 0.3);
-  outline-offset: 1px;
-  border-radius: 4px;
-}
-.hylo-preview-highlight:hover {
-  outline: 2px solid rgba(99, 102, 241, 0.55) !important;
-}
-
-/* 空白提示 */
-#hylo-empty {
-  display: flex;
+  overflow: hidden;
   flex-direction: column;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--hylo-ui-font);
+  font-size: 13px;
+}
+
+#hylo-toolbar,
+#hylo-toolbar *,
+#hylo-outline,
+#hylo-outline * {
+  box-sizing: border-box;
+}
+
+#hylo-toolbar {
+  display: flex;
+  height: var(--hylo-toolbar-height);
+  min-height: var(--hylo-toolbar-height);
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 10px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.22));
+  user-select: none;
+}
+
+.hylo-toolbar__brand {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.hylo-toolbar__mark {
+  width: 7px;
+  height: 7px;
+  border: 1px solid color-mix(in srgb, var(--hylo-cyan) 65%, var(--vscode-foreground));
+  border-radius: 2px 4px 2px 4px;
+  background: var(--hylo-violet);
+  box-shadow: 5px 0 0 -2px var(--hylo-cyan);
+}
+
+#hylo-breadcrumb {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  overflow: hidden;
+}
+
+#hylo-breadcrumb button {
+  overflow: hidden;
+  max-width: 112px;
+  padding: 2px 4px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-family: var(--hylo-mono-font);
+  font-size: 10px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#hylo-breadcrumb button:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+#hylo-breadcrumb button:last-child {
+  color: var(--hylo-cyan);
+  background: var(--hylo-cyan-soft);
+}
+
+.hylo-breadcrumb__separator {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.45;
+  font-family: var(--hylo-mono-font);
+  font-size: 9px;
+}
+
+.hylo-breadcrumb__hint {
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hylo-toolbar__meta {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+#hylo-stats,
+#hylo-mode-hint {
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--hylo-mono-font);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+#hylo-mode-hint {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#hylo-mode-toggle {
+  height: 24px;
+  padding: 0 8px;
+  color: var(--hylo-cyan);
+  background: var(--hylo-cyan-soft);
+  border: 1px solid color-mix(in srgb, var(--hylo-cyan) 35%, transparent);
+  border-radius: var(--hylo-radius);
+  font-family: var(--hylo-ui-font);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+#hylo-mode-toggle.is-interactive {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: transparent;
+}
+
+#hylo-mode-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+#hylo-outline-toggle {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  color: var(--vscode-icon-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--hylo-radius);
+}
+
+#hylo-outline-toggle:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+#hylo-outline-toggle.is-active {
+  color: var(--hylo-cyan);
+  background: var(--hylo-cyan-soft);
+  border-color: color-mix(in srgb, var(--hylo-cyan) 34%, transparent);
+}
+
+#hylo-outline-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#hylo-workspace {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 0 minmax(0, 1fr);
+  overflow: hidden;
+  transition: grid-template-columns 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#hylo-workspace.hylo-outline-open {
+  grid-template-columns: var(--hylo-outline-width) minmax(0, 1fr);
+}
+
+#hylo-outline {
+  display: flex;
+  min-width: var(--hylo-outline-width);
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-right: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.22));
+}
+
+.hylo-outline__header {
+  display: flex;
+  height: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+  background: var(--vscode-sideBarSectionHeader-background, transparent);
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.16));
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+#hylo-outline-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  color: var(--hylo-cyan);
+  background: var(--hylo-cyan-soft);
+  border-radius: 99px;
+  font-family: var(--hylo-mono-font);
+  font-size: 9px;
+  font-weight: 500;
+  text-align: center;
+}
+
+#hylo-outline-tree {
+  min-height: 0;
+  flex: 1;
+  padding: 6px 5px 14px;
+  overflow: auto;
+}
+
+.hylo-outline__empty {
+  margin: 0;
+  padding: 14px 9px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.hylo-outline-node {
+  display: flex;
+  height: 26px;
+  align-items: center;
+  padding-right: 4px;
+  padding-left: calc(3px + var(--hylo-outline-depth) * 12px);
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  border-radius: var(--hylo-radius);
+}
+
+.hylo-outline-node:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.hylo-outline-node.is-selected {
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+  background: var(--hylo-violet-soft);
+  box-shadow: inset 2px 0 var(--hylo-violet);
+}
+
+.hylo-outline-node__toggle,
+.hylo-outline-node__spacer {
+  display: grid;
+  width: 18px;
+  height: 20px;
+  flex: 0 0 18px;
+  padding: 0;
+  place-items: center;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+}
+
+.hylo-outline-node__toggle svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  transition: transform 120ms ease;
+}
+
+.hylo-outline-node__toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.hylo-outline-node__target {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.hylo-outline-node__target span,
+.hylo-outline-node__target small {
+  overflow: hidden;
+  font-family: var(--hylo-mono-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hylo-outline-node__target span {
+  font-size: 10px;
+}
+
+.hylo-outline-node__target small {
+  color: var(--hylo-cyan);
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+#hylo-preview-surface {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+#hylo-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  border: 0;
+}
+
+#hylo-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  padding: 24px;
   color: var(--vscode-descriptionForeground, #888888);
+  background: var(--vscode-editor-background, #ffffff);
+  text-align: center;
 }
 
 #hylo-empty.hidden {
   display: none;
 }
 
-/* 滚动条定制 */
+#hylo-toolbar button:focus-visible,
+#hylo-outline button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--hylo-cyan));
+  outline-offset: -1px;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background, rgba(0, 0, 0, 0.12));
+  background: var(--vscode-scrollbarSlider-background, rgba(0, 0, 0, 0.16));
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(0, 0, 0, 0.22));
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(0, 0, 0, 0.28));
+}
+
+@media (max-width: 720px) {
+  #hylo-workspace,
+  #hylo-workspace.hylo-outline-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #hylo-outline {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(var(--hylo-outline-width), 82vw);
+    min-width: 0;
+    transform: translateX(-101%);
+    box-shadow: 14px 0 32px rgba(0, 0, 0, 0.28);
+    transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  #hylo-workspace.hylo-outline-open #hylo-outline {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 520px) {
+  .hylo-toolbar__brand,
+  #hylo-stats,
+  #hylo-mode-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #hylo-workspace,
+  #hylo-outline,
+  .hylo-outline-node__toggle svg {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
+}
+
+@media print {
+  #hylo-toolbar,
+  #hylo-outline {
+    display: none !important;
+  }
+
+  body.hylo-host-shell,
+  #hylo-workspace,
+  #hylo-preview-surface,
+  #hylo-preview-frame {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
 }
