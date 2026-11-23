@@ -13,14 +13,42 @@ export function resolvePreviewMode(
 }
 
 export function createHostCsp(cspSource: string, nonce: string): string {
+  // 预览帧现在通过 srcdoc 内联（沙箱 iframe 无法请求 vscode-webview-resource 子资源）。
+  // 宿主 CSP 需要为「交互预览」放行远程资源；安全模式由帧内 CSP meta 再收窄
+  // （CSP 策略取交集：父策略放行但不代表子策略放行）。
   return [
     "default-src 'none'",
-    `img-src ${cspSource} data:`,
-    `style-src ${cspSource}`,
-    `font-src ${cspSource}`,
-    `script-src 'nonce-${nonce}'`,
-    "connect-src 'none'",
-    `frame-src ${cspSource}`,
+    `img-src ${cspSource} data: blob: https:`,
+    `style-src ${cspSource} 'unsafe-inline' https:`,
+    `font-src ${cspSource} data: https:`,
+    `script-src 'nonce-${nonce}' ${cspSource} blob: https:`,
+    "connect-src https:",
+    `frame-src ${cspSource} https: data:`,
+    "object-src 'none'",
+    `base-uri ${cspSource}`,
+    "form-action 'none'",
+  ].join("; ");
+}
+
+/** 预览帧（srcdoc）自身的 CSP：在宿主策略之上按模式收窄/放行。 */
+export function createFrameDocumentCsp(
+  cspSource: string,
+  nonce: string,
+  mode: PreviewMode,
+): string {
+  const interactive = mode === "interactive";
+  const remote = interactive ? " https:" : "";
+  return [
+    "default-src 'none'",
+    `img-src ${cspSource} data: blob:${remote}`,
+    `style-src ${cspSource} 'unsafe-inline'${remote}`,
+    `font-src ${cspSource} data:${remote}`,
+    `script-src 'nonce-${nonce}' ${cspSource}${interactive ? " blob: https:" : ""}`,
+    `connect-src ${interactive ? "https:" : "'none'"}`,
+    interactive ? "frame-src https:" : "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
   ].join("; ");
 }
 

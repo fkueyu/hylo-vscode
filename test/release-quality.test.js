@@ -65,9 +65,38 @@ test("preview host authenticates messages and freezes stale mappings while parsi
   const shell = read("media/preview.js");
   assert.match(panel, /sessionToken/);
   assert.match(panel, /nodeMap\.clear\(\)/);
-  assert.match(shell, /event\.source !== window && event\.source !== null/);
+  // 扩展宿主消息：不同 VS Code 版本/分支 event.source 可能是 window、null 或父窗口 proxy，
+  // 因此不能用 source 区分宿主消息，改用 sessionToken；帧消息用 channel + contentWindow 校验。
+  assert.match(shell, /message\.channel === CHANNEL/);
+  assert.match(shell, /event\.source !== frame\.contentWindow/);
   assert.match(shell, /message\.sessionToken !== sessionToken/);
   assert.match(shell, /message\.type === "parsing"/);
+});
+
+test("preview frame is rendered from inline srcdoc for restrictive IDE webviews", () => {
+  const panel = read("src/preview-panel.ts");
+  const shell = read("media/preview.js");
+  const security = read("src/preview-security.ts");
+  assert.match(panel, /createFrameDocument\("/);
+  assert.match(panel, /data-safe-srcdoc/);
+  assert.match(panel, /data-interactive-srcdoc/);
+  assert.match(panel, /frameErrorSafe/);
+  assert.match(shell, /safeSrcdoc/);
+  assert.match(shell, /frame\.srcdoc = currentMode === "interactive" \? interactiveSrcdoc : safeSrcdoc/);
+  assert.match(shell, /showFrameError/);
+  assert.match(security, /style-src \$\{cspSource\} 'unsafe-inline'/);
+});
+
+test("local relative CSS/JS/images are inlined before rendering the sandboxed preview", () => {
+  const panel = read("src/preview-panel.ts");
+  assert.match(panel, /inlineLocalAssets/);
+  assert.match(panel, /resolveLocalAsset/);
+  assert.match(panel, /readAssetText/);
+  assert.match(panel, /readAssetDataUrl/);
+  assert.match(panel, /tag === "link"/);
+  assert.match(panel, /stylesheet/i);
+  assert.match(panel, /node\.tagName = "style"/);
+  assert.match(panel, /ast: previewAst/);
 });
 
 test("extension sends large documents to a bundled versioned parser worker", () => {

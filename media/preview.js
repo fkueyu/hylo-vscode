@@ -24,8 +24,14 @@
 
   const CHANNEL = "hylo-preview";
   const sessionToken = frame.dataset.session || "";
-  const safeFrameSrc = frame.dataset.safeSrc || "";
-  const interactiveFrameSrc = frame.dataset.interactiveSrc || "";
+  // 预览帧使用 srcdoc 内联（运行时 + 本地资源已内联），
+  // 不依赖 vscode-webview-resource 子资源请求——沙箱 iframe 里这些请求在部分 IDE 会被拦。
+  const safeSrcdoc = frame.dataset.safeSrcdoc || "";
+  const interactiveSrcdoc = frame.dataset.interactiveSrcdoc || "";
+  const frameErrorSafe = frame.dataset.errorSafe || "";
+  const frameErrorInteractive = frame.dataset.errorInteractive || "";
+  const FRAME_READY_TIMEOUT = 4000;
+  let frameReadyTimer = 0;
   let outlineOpen = Boolean((vscode.getState() || {}).outlineOpen);
   let currentAst = null;
   let selectedNodeId = null;
@@ -35,9 +41,39 @@
   let lastUpdate = null;
   const collapsedNodeIds = new Set();
 
+  function clearFrameTimers() {
+    window.clearTimeout(frameReadyTimer);
+    frameReadyTimer = 0;
+  }
+
+  function showFrameError(message) {
+    if (!message) return;
+    const paragraph = emptyContainer.querySelector("p");
+    if (paragraph) paragraph.textContent = message;
+    emptyContainer.classList.remove("hidden");
+    emptyContainer.classList.add("is-error");
+  }
+
+  function hideFrameError() {
+    emptyContainer.classList.remove("is-error");
+  }
+
+  function scheduleFrameWatchdog() {
+    clearFrameTimers();
+    frameReadyTimer = window.setTimeout(() => {
+      if (frameReady) return;
+      showFrameError(currentMode === "interactive" ? frameErrorInteractive : frameErrorSafe);
+    }, FRAME_READY_TIMEOUT);
+  }
+
   function rebuildFrame() {
     frameReady = false;
-    frame.src = currentMode === "interactive" ? interactiveFrameSrc : safeFrameSrc;
+    hideFrameError();
+    clearFrameTimers();
+    frame.removeAttribute("src");
+    // 每次都重新赋值 srcdoc，确保模式切换 / 初次加载走同一条内联路径
+    frame.srcdoc = currentMode === "interactive" ? interactiveSrcdoc : safeSrcdoc;
+    scheduleFrameWatchdog();
   }
 
   function postToFrame(message) {
@@ -216,10 +252,16 @@
 
   window.addEventListener("message", (event) => {
     const message = event.data;
-    if (event.source !== window && event.source !== null) {
-      if (event.source !== frame.contentWindow || message?.channel !== CHANNEL) return;
+    if (!message) return;
+
+    // 来自预览帧：按 channel + iframe contentWindow 校验
+    if (message.channel === CHANNEL) {
+      if (event.source !== frame.contentWindow) return;
       if (message.type === "preview-ready") {
         frameReady = true;
+        clearFrameTimers();
+        hideFrameError();
+        emptyContainer.classList.add("hidden");
         sendLastUpdate();
       } else if (message.type === "node-selected" && typeof message.nodeId === "string") {
         selectNode(message.nodeId, true, false);
@@ -227,7 +269,10 @@
       return;
     }
 
-    if (!message || typeof message.type !== "string" || message.sessionToken !== sessionToken) return;
+    // 来自扩展宿主：不同 VS Code 版本/分支的 event.source 可能是 window、null 或父窗口
+    // proxy，因此不能用 source 区分，改用 sessionToken 校验。
+    if (event.source === frame.contentWindow) return;
+    if (typeof message.type !== "string" || message.sessionToken !== sessionToken) return;
     if (message.type === "update") {
       lastUpdate = message;
       currentAst = message.ast;

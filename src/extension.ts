@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showWarningMessage("请先打开一个 HTML 文件");
       return;
     }
-    HyloPreviewPanel.createOrShow(context.extensionUri, context.globalStorageUri, editor);
+    HyloPreviewPanel.createOrShow(context.extensionUri, editor);
   });
 
   context.subscriptions.push(disposable);

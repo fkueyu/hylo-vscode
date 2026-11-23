@@ -451,3 +451,18 @@ body.hylo-host-shell {
     overflow: visible !important;
   }
 }
+
+/* 预览帧初始化失败（如 IDE 限制嵌套 webview 资源）时的提示 */
+#hylo-empty.is-error {
+  background: var(--vscode-editor-background, #ffffff);
+}
+
+#hylo-empty.is-error p {
+  max-width: 520px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 159, 10, 0.45);
+  border-radius: 8px;
+  background: rgba(255, 159, 10, 0.08);
+  color: var(--vscode-errorForeground, #b26a00);
+  line-height: 1.6;
+}

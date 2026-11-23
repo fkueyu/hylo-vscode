@@ -33,12 +33,13 @@ test("safe mode blocks active embedded documents", () => {
   );
 });
 
-test("frame CSP permits the local base URI used by relative resources", () => {
+test("frame CSP allows remote resources only in interactive mode and blocks base navigation", () => {
+  const securitySource = readFileSync(require.resolve("../src/preview-security.ts"), "utf8");
+  assert.match(securitySource, /base-uri 'none'/);
+  assert.match(securitySource, /interactive \? "frame-src https:" : "frame-src 'none'"/);
+  // 本地相对资源不再依赖 base URI，而是在扩展侧内联进 AST
   const panelSource = readFileSync(require.resolve("../src/preview-panel.ts"), "utf8");
-  assert.match(panelSource, /base-uri \$\{cspSource\}/);
-  assert.match(panelSource, /interactive \? "frame-src https:" : "frame-src 'none'"/);
-  const frameSource = readFileSync(require.resolve("../media/preview-frame.js"), "utf8");
-  assert.match(frameSource, /getAttribute\("href"\) !== baseUri/);
+  assert.match(panelSource, /inlineLocalAssets/);
 });
 
 test("preview links cannot navigate the sandbox away from the editor", () => {
@@ -58,17 +59,27 @@ test("interactive inline scripts run through revocable blob URLs", () => {
   const panelSource = readFileSync(require.resolve("../src/preview-panel.ts"), "utf8");
   assert.match(frameSource, /createObjectURL\(new Blob/);
   assert.match(frameSource, /revokeObjectURL/);
-  assert.match(panelSource, /script-src \$\{cspSource\}.*blob: https:/);
-  assert.doesNotMatch(panelSource, /script-src[^\n]*unsafe-inline/);
+  const securitySource = readFileSync(require.resolve("../src/preview-security.ts"), "utf8");
+  assert.match(securitySource, /script-src 'nonce-\$\{nonce\}' \$\{cspSource\}\$\{interactive \? " blob: https:" : ""\}/);
+  assert.doesNotMatch(securitySource, /script-src[^;]*unsafe-inline/);
 });
 
-test("sandbox frames use independent resource URLs instead of inherited srcdoc CSP", () => {
+test("sandbox frame renders via inline srcdoc instead of resource URLs", () => {
   const shellSource = readFileSync(require.resolve("../media/preview.js"), "utf8");
   const panelSource = readFileSync(require.resolve("../src/preview-panel.ts"), "utf8");
-  assert.doesNotMatch(shellSource, /srcdoc|createFrameDocument/);
-  assert.match(shellSource, /frame\.src = currentMode/);
-  assert.match(panelSource, /data-safe-src/);
-  assert.match(panelSource, /data-interactive-src/);
+  // 沙箱 iframe 无法可靠请求 vscode-webview-resource 子资源（VS Code 分支/版本限制），
+  // 预览帧改为 srcdoc 内联：运行时和本地静态资源都在扩展侧内联进文档。
+  assert.doesNotMatch(shellSource, /frame\.src = currentMode/);
+  assert.doesNotMatch(panelSource, /data-safe-src=|data-interactive-src=/);
+  assert.match(shellSource, /frame\.srcdoc = currentMode === "interactive" \? interactiveSrcdoc : safeSrcdoc/);
+  assert.match(shellSource, /interactiveSrcdoc/);
+  assert.match(panelSource, /createFrameDocument\("safe", nonce\)/);
+  assert.match(panelSource, /createFrameDocument\("interactive", nonce\)/);
+  assert.match(panelSource, /data-safe-srcdoc/);
+  assert.match(panelSource, /data-interactive-srcdoc/);
+  // 运行时内联（不依赖资源请求），且 </script> 需要转义避免提前闭合
+  assert.match(panelSource, /readFrameRuntimeSource/);
+  assert.match(panelSource, /replace\(\/<\\\/script\/gi/);
 });
 
 test("document root attributes and direct body selectors are preserved", () => {

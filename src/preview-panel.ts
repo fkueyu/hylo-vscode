@@ -5,11 +5,13 @@
 
 import * as vscode from "vscode";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 import { shouldParseInWorker } from "@ainx/hylo-core";
 import { parseHTML } from "./ast-parser";
 import { NodeMapManager } from "./node-map";
 import {
+  createFrameDocumentCsp,
   createHostCsp,
   resolvePreviewMode,
   type PreviewMode,
@@ -35,13 +37,14 @@ export class HyloPreviewPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
-  private readonly frameStorageUri: vscode.Uri;
   private readonly nodeMap = new NodeMapManager();
   private parserWorker: Worker | undefined;
   private readonly sessionToken = getNonce();
   private disposables: vscode.Disposable[] = [];
   private parseVersion = 0;
   private parserWorkerAvailable = true;
+  /** 本地资源（CSS/JS/图片）内联缓存：path -> { mtimeMs, size, content } */
+  private readonly assetCache = new Map<string, { mtimeMs: number; size: number; text?: string; dataUrl?: string }>();
 
   /** 当前跟踪的编辑器 */
   private trackedEditor: vscode.TextEditor | undefined;
@@ -55,7 +58,6 @@ export class HyloPreviewPanel {
 
   static createOrShow(
     extensionUri: vscode.Uri,
-    frameStorageUri: vscode.Uri,
     editor: vscode.TextEditor,
   ) {
     // 如果已有面板，直接 reveal
@@ -73,7 +75,6 @@ export class HyloPreviewPanel {
         enableScripts: true,
         localResourceRoots: [
           vscode.Uri.joinPath(extensionUri, "media"),
-          frameStorageUri,
           ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
           ...(editor.document.uri.scheme === 'file' ? [vscode.Uri.file(require("path").dirname(editor.document.uri.fsPath))] : [])
         ],
@@ -84,7 +85,6 @@ export class HyloPreviewPanel {
     HyloPreviewPanel.instance = new HyloPreviewPanel(
       panel,
       extensionUri,
-      frameStorageUri,
       editor,
     );
   }
@@ -98,12 +98,10 @@ export class HyloPreviewPanel {
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    frameStorageUri: vscode.Uri,
     editor: vscode.TextEditor
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
-    this.frameStorageUri = frameStorageUri;
     this.previewMode = this.resolveConfiguredMode();
     try {
       this.parserWorker = new Worker(
@@ -241,6 +239,117 @@ export class HyloPreviewPanel {
     });
   }
 
+  // ── 本地资源内联 ─────────────────────────────────────
+  // Webview 内的沙箱 iframe 无法加载 vscode-webview-resource 子资源（本地 CSS/JS/图片），
+  // 因此在把 AST 发给预览帧之前，把相对路径的本地资源直接内联进文档：
+  // CSS → <style>，JS → 内联 <script>，图片 → data: URL。
+
+  private resolveLocalAsset(reference: string, baseDir: string): string | null {
+    const trimmed = (reference || "").trim();
+    if (!trimmed || trimmed.startsWith("#")) return null;
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(trimmed)) return null;
+    const withoutQuery = trimmed.split(/[?#]/)[0];
+    if (!withoutQuery) return null;
+    let decoded = withoutQuery;
+    try { decoded = decodeURIComponent(withoutQuery); } catch { /* keep raw */ }
+    const absolute = path.isAbsolute(decoded) ? decoded : path.resolve(baseDir, decoded);
+    try {
+      return fs.statSync(absolute).isFile() ? absolute : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readAssetText(fsPath: string, maxBytes: number): string | null {
+    try {
+      const stat = fs.statSync(fsPath);
+      if (!stat.isFile() || stat.size > maxBytes) return null;
+      const cached = this.assetCache.get(fsPath);
+      if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+        return cached.text ?? null;
+      }
+      const text = fs.readFileSync(fsPath, "utf8");
+      this.assetCache.set(fsPath, { mtimeMs: stat.mtimeMs, size: stat.size, text });
+      return text;
+    } catch {
+      return null;
+    }
+  }
+
+  private readAssetDataUrl(fsPath: string, maxBytes: number): string | null {
+    try {
+      const stat = fs.statSync(fsPath);
+      if (!stat.isFile() || stat.size > maxBytes) return null;
+      const cached = this.assetCache.get(fsPath);
+      if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+        return cached.dataUrl ?? null;
+      }
+      const mimeByExtension: Record<string, string> = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+        ".avif": "image/avif",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".otf": "font/otf",
+      };
+      const mime = mimeByExtension[path.extname(fsPath).toLowerCase()] ?? "application/octet-stream";
+      const dataUrl = `data:${mime};base64,${fs.readFileSync(fsPath).toString("base64")}`;
+      this.assetCache.set(fsPath, { mtimeMs: stat.mtimeMs, size: stat.size, dataUrl });
+      return dataUrl;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 把相对路径的本地 CSS/JS/图片内联进 AST（原地修改，返回同一棵树）。 */
+  private inlineLocalAssets(root: HyloNode, documentUri: vscode.Uri): HyloNode {
+    if (documentUri.scheme !== "file") return root;
+    const baseDir = path.dirname(documentUri.fsPath);
+    const visit = (node: HyloNode) => {
+      if (node.type === "element" && node.tagName) {
+        const tag = node.tagName.toLowerCase();
+        const attrs = node.attrs ?? {};
+        if (tag === "link" && /(?:^|\s)stylesheet(?:\s|$)/i.test(attrs.rel ?? "")) {
+          const assetPath = this.resolveLocalAsset(attrs.href ?? "", baseDir);
+          const text = assetPath ? this.readAssetText(assetPath, 1024 * 1024) : null;
+          if (text !== null) {
+            node.tagName = "style";
+            node.attrs = {};
+            node.children = [
+              { nodeId: `${node.nodeId}_style`, type: "text", textContent: text, sourceLocation: node.sourceLocation },
+            ];
+          }
+        } else if (tag === "script" && attrs.src) {
+          const assetPath = this.resolveLocalAsset(attrs.src, baseDir);
+          const text = assetPath ? this.readAssetText(assetPath, 2 * 1024 * 1024) : null;
+          if (text !== null) {
+            node.attrs = {};
+            node.children = [
+              { nodeId: `${node.nodeId}_script`, type: "text", textContent: text, sourceLocation: node.sourceLocation },
+            ];
+          }
+        } else if (["img", "source", "video", "audio"].includes(tag) && attrs.src) {
+          const assetPath = this.resolveLocalAsset(attrs.src, baseDir);
+          const dataUrl = assetPath ? this.readAssetDataUrl(assetPath, 6 * 1024 * 1024) : null;
+          if (dataUrl) node.attrs = { ...attrs, src: dataUrl };
+        } else if (tag === "video" && attrs.poster) {
+          const assetPath = this.resolveLocalAsset(attrs.poster, baseDir);
+          const dataUrl = assetPath ? this.readAssetDataUrl(assetPath, 6 * 1024 * 1024) : null;
+          if (dataUrl) node.attrs = { ...attrs, poster: dataUrl };
+        }
+      }
+      for (const child of node.children ?? []) visit(child);
+    };
+    visit(root);
+    return root;
+  }
+
   private sendParseResult(result: WorkerParseResult) {
     if (result.version !== this.parseVersion || !this.trackedEditor) return;
 
@@ -254,10 +363,13 @@ export class HyloPreviewPanel {
       baseUri = this.panel.webview.asWebviewUri(dirUri).toString() + "/";
     }
 
+    // 本地相对资源（CSS/JS/图片）内联后再发送，沙箱 iframe 无法直接请求 webview 资源
+    const previewAst = this.inlineLocalAssets(result.root, this.trackedEditor.document.uri);
+
     // 发送 AST 到 Webview
     this.postMessage({
       type: "update",
-      ast: result.root,
+      ast: previewAst,
       stats: { nodeCount: result.nodeCount, parseTime: result.parseTime },
       baseUri,
       mode: this.previewMode,
@@ -366,32 +478,16 @@ export class HyloPreviewPanel {
 
   // ── Webview HTML ──────────────────────────────────────
 
-  private createFrameDocuments(runtimeUri: vscode.Uri): {
-    safe: vscode.Uri;
-    interactive: vscode.Uri;
-  } {
-    fs.mkdirSync(this.frameStorageUri.fsPath, { recursive: true });
+  /** 预览帧（srcdoc）：运行时内联，不依赖 vscode-webview-resource 资源请求。 */
+  private createFrameDocument(mode: PreviewMode, nonce: string): string {
+    const runtimeSource = this.readFrameRuntimeSource();
     const cspSource = this.panel.webview.cspSource;
-    const createDocument = (mode: PreviewMode) => {
-      const interactive = mode === "interactive";
-      const remote = interactive ? " https:" : "";
-      const csp = [
-        "default-src 'none'",
-        `img-src ${cspSource} data: blob:${remote}`,
-        `style-src ${cspSource} 'unsafe-inline'${remote}`,
-        `font-src ${cspSource} data:${remote}`,
-        `script-src ${cspSource}${interactive ? " blob: https:" : ""}`,
-        `connect-src ${interactive ? "https:" : "'none'"}`,
-        interactive ? "frame-src https:" : "frame-src 'none'",
-        "object-src 'none'",
-        `base-uri ${cspSource}`,
-        "form-action 'none'",
-      ].join("; ");
-      return `<!DOCTYPE html><html><head>
+    const csp = createFrameDocumentCsp(cspSource, nonce, mode);
+    return `<!DOCTYPE html><html><head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="${escapeHtmlAttribute(csp)}">
-  <style>
+  <style nonce="${nonce}">
     html,body{min-height:100%;margin:0}
     body{color:#000;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     [data-hylo-id]:hover{cursor:pointer;outline:1px dashed rgba(34,199,184,.58);outline-offset:1px}
@@ -399,37 +495,28 @@ export class HyloPreviewPanel {
     @media print{[data-hylo-id]:hover,.hylo-preview-highlight{outline:none!important;box-shadow:none!important;background:transparent!important}}
   </style>
 </head><body>
-  <script src="${escapeHtmlAttribute(runtimeUri.toString())}"></script>
+  <script nonce="${nonce}">${runtimeSource}</script>
 </body></html>`;
-    };
+  }
 
-    const safeFile = vscode.Uri.joinPath(this.frameStorageUri, "preview-safe.html");
-    const interactiveFile = vscode.Uri.joinPath(
-      this.frameStorageUri,
-      "preview-interactive.html",
-    );
-    fs.writeFileSync(safeFile.fsPath, createDocument("safe"), "utf8");
-    fs.writeFileSync(
-      interactiveFile.fsPath,
-      createDocument("interactive"),
-      "utf8",
-    );
-    return {
-      safe: this.panel.webview.asWebviewUri(safeFile),
-      interactive: this.panel.webview.asWebviewUri(interactiveFile),
-    };
+  private frameRuntimeSource: string | undefined;
+
+  private readFrameRuntimeSource(): string {
+    if (this.frameRuntimeSource !== undefined) return this.frameRuntimeSource;
+    const runtimePath = vscode.Uri.joinPath(this.extensionUri, "media", "preview-frame.js").fsPath;
+    this.frameRuntimeSource = fs
+      .readFileSync(runtimePath, "utf8")
+      .replace(/<\/script/gi, "<\\/script");
+    return this.frameRuntimeSource;
   }
 
   private getWebviewContent(): string {
     const mediaUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "media")
     );
-    const frameRuntimeUri = this.panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "media", "preview-frame.js")
-    );
-    const frameDocuments = this.createFrameDocuments(frameRuntimeUri);
-
     const nonce = getNonce();
+    const safeFrameDocument = this.createFrameDocument("safe", nonce);
+    const interactiveFrameDocument = this.createFrameDocument("interactive", nonce);
     const isZh = vscode.env.language.toLowerCase().startsWith("zh");
     const labels = isZh ? {
       structure: "文档结构",
@@ -442,6 +529,8 @@ export class HyloPreviewPanel {
       interactiveMode: "交互预览",
       safeHint: "脚本和远程资源已阻止",
       toggleMode: "切换预览安全模式",
+      frameErrorSafe: "预览帧初始化失败：当前 IDE 的 Webview 可能限制了嵌套预览帧。可尝试升级 IDE，或改用 VS Code 打开。",
+      frameErrorInteractive: "交互预览无法在当前 IDE 中初始化，请切回安全预览或改用 VS Code。",
     } : {
       structure: "Document structure",
       showStructure: "Show document structure",
@@ -453,6 +542,8 @@ export class HyloPreviewPanel {
       interactiveMode: "Interactive Preview",
       safeHint: "Scripts and remote resources are blocked",
       toggleMode: "Toggle preview security mode",
+      frameErrorSafe: "Preview frame failed to initialize: this IDE may restrict nested preview frames. Try updating the IDE or use VS Code.",
+      frameErrorInteractive: "Interactive preview cannot initialize in this IDE; switch back to Safe Preview or use VS Code.",
     };
 
     const hostCsp = createHostCsp(this.panel.webview.cspSource, nonce);
@@ -516,8 +607,10 @@ export class HyloPreviewPanel {
         id="hylo-preview-frame"
         sandbox="allow-scripts"
         title="Hylo document preview"
-        data-safe-src="${frameDocuments.safe}"
-        data-interactive-src="${frameDocuments.interactive}"
+        data-safe-srcdoc="${escapeHtmlAttribute(safeFrameDocument)}"
+        data-interactive-srcdoc="${escapeHtmlAttribute(interactiveFrameDocument)}"
+        data-error-safe="${escapeHtmlAttribute(labels.frameErrorSafe)}"
+        data-error-interactive="${escapeHtmlAttribute(labels.frameErrorInteractive)}"
         data-session="${this.sessionToken}"
       ></iframe>
       <div id="hylo-empty">
